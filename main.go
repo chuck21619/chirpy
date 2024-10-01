@@ -1,66 +1,38 @@
 package main
 
 import (
+	"log"
 	"net/http"
-	"fmt"
+	"sync/atomic"
 )
 
-func main() {
-
-	multiplexer := http.NewServeMux()
-	server := http.Server{
-		Addr:    ":8080",
-		Handler: multiplexer,
-	}
-	
-	apiConfig := apiConfig{
-		fileserverHits: 0,
-	}
-	
-	filesDirectory := http.Dir(".")
-	fileServerHandler := http.FileServer(filesDirectory)
-	strippedPrefixFileServerHandler := http.StripPrefix("/app", fileServerHandler)
-	wrappedStrippedFileServerHandler := apiConfig.middlewareMetricsInc(strippedPrefixFileServerHandler)
-	multiplexer.Handle("/app/", wrappedStrippedFileServerHandler)
-	//multiplexer.Handle("/", fileServerHandler)
-
-	multiplexer.HandleFunc("/healthz", mysWEetnest)
-
-	multiplexer.HandleFunc("/metrics", apiConfig.handlerMetrics)
-	multiplexer.HandleFunc("/reset", apiConfig.handlerReset)
-
-	server.ListenAndServe()
-}
-
-func mysWEetnest(responseWriter http.ResponseWriter, request *http.Request) {
-	responseWriter.Header().Add("Content-Type", "text/plain; charset=utf-8")
-	//responseWriter.WriteHeader(http.StatusOK) //unnecessary
-	statusString := http.StatusText(http.StatusOK)
-	//statusString := "any string i fucking want bitch"
-	responseWriter.Write([]byte(statusString))
-	
-}
-
-func (cfg *apiConfig) handlerMetrics(w http.ResponseWriter, r *http.Request) {
-	w.Header().Add("Content-Type", "text/plain; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(fmt.Sprintf("Hits: %d", cfg.fileserverHits)))
-}
-
 type apiConfig struct {
-	fileserverHits int
+	fileserverHits atomic.Int32
 }
 
-func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		cfg.fileserverHits++
-		next.ServeHTTP(w, r)
-	})
-}
+func main() {
+	const filepathRoot = "."
+	const port = "8080"
 
-func (cfg *apiConfig) handlerReset(w http.ResponseWriter, r *http.Request) {
-	cfg.fileserverHits = 0
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Hits reset to 0"))
-}
+	apiCfg := apiConfig{
+		fileserverHits: atomic.Int32{},
+	}
 
+	mux := http.NewServeMux()
+	fsHandler := apiCfg.middlewareMetricsInc(http.StripPrefix("/app", http.FileServer(http.Dir(filepathRoot))))
+	mux.Handle("/app/", fsHandler)
+
+	mux.HandleFunc("GET /api/healthz", ready)
+	mux.HandleFunc("POST /api/validate_chirp", handlerChirpsValidate)
+
+	mux.HandleFunc("POST /admin/reset", apiCfg.handlerReset)
+	mux.HandleFunc("GET /admin/metrics", apiCfg.handlerMetrics)
+
+	srv := &http.Server{
+		Addr:    ":" + port,
+		Handler: mux,
+	}
+
+	log.Printf("Serving files from %s on port: %s\n", filepathRoot, port)
+	log.Fatal(srv.ListenAndServe())
+}
