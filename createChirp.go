@@ -43,6 +43,7 @@ func (a *apiConfig) createChirp(w http.ResponseWriter, r *http.Request) {
 	uuidParam, err := uuid.Parse(params.User_id)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't encode parameters", err)
+		return
 	}
 
 	createChirpParams := database.CreateChirpParams{
