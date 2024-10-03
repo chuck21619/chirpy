@@ -52,7 +52,7 @@ func (a *apiConfig) createChirp(w http.ResponseWriter, r *http.Request) {
 
 	chirp, err := a.db.CreateChirp(r.Context(), createChirpParams)
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Couldn't create user", err)
+		respondWithError(w, http.StatusInternalServerError, "Couldn't create chirp", err)
 		return
 	}
 
