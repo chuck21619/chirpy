@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"time"
-
 	"github.com/chuck21619/chirpy/internal/auth"
 	"github.com/chuck21619/chirpy/internal/database"
 	"github.com/google/uuid"

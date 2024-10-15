@@ -15,6 +15,7 @@ type apiConfig struct {
 	fileserverHits atomic.Int32
 	db *database.Queries
 	platform string
+	secret string
 }
 
 func main() {
@@ -26,6 +27,11 @@ func main() {
 	dbURL := os.Getenv("DB_URL")
 	if dbURL == "" {
 		log.Fatal("DB_URL must be set")
+	}
+
+	secret := os.Getenv("SECRET")
+	if secret == "" {
+		log.Fatal("secret must be set")
 	}
 
 	dbConn, err := sql.Open("postgres", dbURL)
@@ -43,6 +49,7 @@ func main() {
 		fileserverHits: atomic.Int32{},
 		db: dbQueries,
 		platform: platform,
+		secret: secret,
 	}
 
 	mux := http.NewServeMux()
@@ -56,6 +63,8 @@ func main() {
 	mux.HandleFunc("GET /api/chirps", apiCfg.handlerGetChirps)
 	mux.HandleFunc("GET /api/chirps/{chirpID}", apiCfg.handlerGetChirp)
 	mux.HandleFunc("POST /api/login", apiCfg.handlerLogin)
+	mux.HandleFunc("POST /api/refresh", apiCfg.refresh)
+	mux.HandleFunc("POST /api/revoke", apiCfg.revokeRefreshToken)
 
 	//admin
 	mux.HandleFunc("POST /admin/reset", apiCfg.handlerReset)

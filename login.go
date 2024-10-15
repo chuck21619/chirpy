@@ -1,10 +1,14 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
-	"encoding/json"
+	"time"
+
 	"github.com/chuck21619/chirpy/internal/auth"
+	"github.com/chuck21619/chirpy/internal/database"
+	"github.com/google/uuid"
 )
 
 func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
@@ -16,7 +20,12 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 		Password string `json:"password"`
 	}
 	type response struct {
-		User
+		ID        uuid.UUID `json:"id"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+		Email     string    `json:"email"`
+		Token	  string	`json:"token"`
+		RefreshToken string `json:"refresh_token"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -27,25 +36,47 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fmt.Println("1")
-
 	user, err := cfg.db.GetUserFromEmail(r.Context(), params.Email)
 	if err != nil {
 		respondWithError(w, http.StatusUnauthorized, "Incorrect email or password", err)
 		return
 	}
 
-	fmt.Println("2")
 	err = auth.CheckPasswordHash(params.Password, user.HashedPassword)
 	if err != nil {
 		respondWithError(w, http.StatusUnauthorized, "Incorrect email or password", err)
+		return
+	}
+
+	token, err := auth.MakeJWT(user.ID, cfg.secret)
+
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't create access JWT", err)
+		return
 	}
 	
-	fmt.Println("3")
+	refresh_token, err := auth.MakeRefreshToken()
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "couldnt create refresh token", err)
+		return
+	}
+
+	refreshParams := database.CreateRefreshTokenParams {
+		Token: refresh_token,
+		ExpiresAt: time.Now().AddDate(0, 0, 60),
+		UserID: user.ID,
+	}
+	_, err = cfg.db.CreateRefreshToken(r.Context(), refreshParams)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "couldnt add refresh token", err)
+	}
+
 	respondWithJSON(w, http.StatusOK, response{
-		User: User{
-			ID:        user.ID,
-			Email:     user.Email,
-		},
+		ID: user.ID,
+		Email: user.Email,
+		CreatedAt: user.CreatedAt,
+		UpdatedAt: user.UpdatedAt,
+		Token: token,
+		RefreshToken: refresh_token,
 	})
 }

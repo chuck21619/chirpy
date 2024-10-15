@@ -5,9 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-
+	"github.com/chuck21619/chirpy/internal/auth"
 	"github.com/chuck21619/chirpy/internal/database"
-	"github.com/google/uuid"
 )
 
 func (a *apiConfig) createChirp(w http.ResponseWriter, r *http.Request) {
@@ -16,12 +15,23 @@ func (a *apiConfig) createChirp(w http.ResponseWriter, r *http.Request) {
 
 	type parameters struct {
 		Body string `json:"body"`
-		User_id string `json:"user_id"`
+	}
+
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "unauthorized", err)
+		return
+	}
+
+	userID, err := auth.ValidateJWT(token, a.secret)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "unauthorized", err)
+		return
 	}
 
 	decoder := json.NewDecoder(r.Body)
 	params := parameters{}
-	err := decoder.Decode(&params)
+	err = decoder.Decode(&params)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't decode parameters", err)
 		return
@@ -40,15 +50,9 @@ func (a *apiConfig) createChirp(w http.ResponseWriter, r *http.Request) {
 	}
 	cleaned := getCleanedBody(params.Body, badWords)
 
-	uuidParam, err := uuid.Parse(params.User_id)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Couldn't encode parameters", err)
-		return
-	}
-
 	createChirpParams := database.CreateChirpParams{
 		Body: cleaned,
-		UserID: uuidParam,
+		UserID: userID,
 	}
 
 	chirp, err := a.db.CreateChirp(r.Context(), createChirpParams)
